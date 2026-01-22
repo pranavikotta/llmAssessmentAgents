@@ -3,6 +3,7 @@ import json
 import re
 from typing import TypedDict, List, Optional
 from typing_extensions import Annotated
+import yaml
 
 from langgraph.graph.message import add_messages
 from langgraph.graph import StateGraph, END
@@ -17,26 +18,47 @@ class ChatTesterState(TypedDict):
     next_agent: str #customer or chatbot
     chat_finished: bool #whether chat ended or not
 
+with open("customer_personas.yaml", "r") as f:
+    persona_config = yaml.safe_load(f)
+
 def customer_node(state: ChatTesterState) -> ChatTesterState:
     messages = state["messages"]
-    #simulate customer message
-    persona = SystemMessage(content="") #use dspy? insert customer person system prompt
-    response = customer_llm.invoke([persona] + messages)
-    return {"messages": [response], "next_agent": "chatbot", "chat_finished": False, "test_type": state["test_type"], "api_calls": state.get("api_calls", [])}
+    test_id = state["test_type"]
+    
+    #load system prompt (persona data)
+    persona_data = persona_config["personas"].get(test_id)
+    if not persona_data:
+        raise ValueError(f"Persona {test_id} not found.")
+    persona = SystemMessage(content=persona_data["system_prompt"])
+    
+    #use the specific temperature from YAML if available
+    config = {"configurable": {"temperature": persona_data.get("temp", 0.7)}} #default temp 0.7 if not specified
+    response = customer_llm.invoke([persona] + messages, config=config)
+    
+    return {
+        "messages": [response], 
+        "next_agent": "chatbot", 
+        "chat_finished": False, 
+        "test_type": test_id, 
+        "api_calls": state.get("api_calls") or []
+    }
 
 def check_for_json(response):
-    #json extraction logic to check if api calls occurred
-    content = response.content
-    match = re.search(r"```json\s*(.*?)\s*```", content, re.DOTALL)
-    extracted = []
-    if match:
-        try:
-            json_str = match.group(1).strip()
-            json.loads(json_str) #validate json
-            extracted.append(json_str)
-        except:
-            pass #else log failure to the state
-    return extracted
+    content = response.content.strip()
+    #chatbot system prompt mandates the entire response be JSON, not contain a block
+    #try a direct parse first to test strict compliance
+    try:
+        data = json.loads(content)
+        return [data] #success: The agent followed the 'no-markdown' rule
+    except json.JSONDecodeError:
+        #extraction logic if the agent failed the "No Markdown" rule but still produced JSON inside backticks
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            try:
+                return [json.loads(match.group(0))]
+            except:
+                return []
+    return []
 
 def chatbot_node(state: ChatTesterState) -> ChatTesterState:
     messages = state["messages"]
