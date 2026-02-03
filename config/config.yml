@@ -1,0 +1,12 @@
+models:
+  - type: main
+    engine: google
+    model: gemini-1.5-flash
+
+rails:
+  input:
+    flows:
+      - self check input
+  output:
+    flows:
+      - self check output

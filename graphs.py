@@ -21,7 +21,7 @@ class ChatTesterState(TypedDict):
     next_agent: str #customer or chatbot
     chat_finished: bool #whether chat ended or not
 
-with open("customer_personas.yaml", "r") as f:
+with open("customer_personas.yaml", "r", encoding="utf-8") as f:
     persona_config = yaml.safe_load(f)
 
 def customer_node(state: ChatTesterState) -> ChatTesterState:
@@ -63,7 +63,7 @@ def check_for_json(response):
                 return []
     return []
 
-with open("chatbot_system_prompts.yaml", "r") as f:
+with open("chatbot_system_prompts.yaml", "r", encoding="utf-8") as f:
     system_prompt_config = yaml.safe_load(f)
 
 def chatbot_node(state: ChatTesterState) -> ChatTesterState:
@@ -91,6 +91,7 @@ def chatbot_node(state: ChatTesterState) -> ChatTesterState:
             location_detected=True
         )
         content_output = dspy_output.model_dump_json(by_alias=True) #converts pydantic object to json    
+        internal_reasoning = None
     else:
         #stay in conversational mode
         print("Mode: General QA (Text)")
