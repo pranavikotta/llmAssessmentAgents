@@ -8,21 +8,22 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 
 #chatbot - more stable/predictable
 chatbot_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
+    model="gemini-2.0-flash", 
     temperature=0.1, 
     google_api_key=API_KEY
 )
 
 #customer - more creative/varied
 customer_llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
+    model="gemini-2.0-flash", 
     temperature=0.8, 
     google_api_key=API_KEY
 )
 
 #configure dspy to use gemini as the default llm
+# Use gemini-2.5-pro for DSPy since gemini-1.5-flash has issues with v1beta API
 gemini_lm = dspy.LM(
-    model="gemini/gemini-2.5-flash",
+    model="gemini/gemini-2.5-flash",  # Use Pro for DSPy (more stable)
     google_api_key=API_KEY,
     cache=False,
     temperature=0.1

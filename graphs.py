@@ -6,7 +6,7 @@ from typing_extensions import Annotated
 import yaml
 
 from langgraph.graph.message import add_messages
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, END  # Import END here
 from langchain_core.messages import SystemMessage, AIMessage
 
 from agent import chatbot_llm, customer_llm, gemini_lm
@@ -130,9 +130,18 @@ def workflow():
     workflow = StateGraph(ChatTesterState)
     workflow.add_node("customer", customer_node)
     workflow.add_node("chatbot", chatbot_node)
-    #conditional edges based on route_logic
-    workflow.add_conditional_edges("customer", route_logic, {"chatbot":"chatbot", "END": "END"})
-    workflow.add_conditional_edges("chatbot", route_logic, {"customer":"customer", "END": "END"})
+    
+    # Conditional edges - map "END" string to END constant
+    workflow.add_conditional_edges(
+        "customer", 
+        route_logic, 
+        {"chatbot": "chatbot", "END": END}  # Use END constant here
+    )
+    workflow.add_conditional_edges(
+        "chatbot", 
+        route_logic, 
+        {"customer": "customer", "END": END}  # Use END constant here
+    )
 
     workflow.set_entry_point("customer")
     return workflow.compile()

@@ -1,12 +1,10 @@
 models:
   - type: main
-    engine: google
-    model: gemini-1.5-flash
+    engine: google_genai
+    model: gemini-2.0-flash
 
 rails:
   input:
-    flows:
-      - self check input
+    flows: []
   output:
-    flows:
-      - self check output
+    flows: []

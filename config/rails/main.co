@@ -1,0 +1,8 @@
+define user express greeting
+  "hello"
+  "hi"
+
+define flow
+  user ...
+  $answer = execute call_agent_action
+  bot $answer
