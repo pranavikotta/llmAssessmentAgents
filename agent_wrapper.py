@@ -7,6 +7,17 @@ class AgentTarget(PromptTarget):
     def __init__(self, agent):
         super().__init__()
         self.agent = agent
+        self.system_prompt = None  # Store system prompt
+    
+    def set_system_prompt(self, system_prompt: str, **kwargs):
+        """
+        Required by PyRIT 0.11.0 - sets the system prompt for the agent.
+        
+        Args:
+            system_prompt: The system prompt to use for this target
+        """
+        self.system_prompt = system_prompt
+        #LangGraph agent has its own system prompts from YAML file, this is for PyRIT's internal tracking
     
     def _validate_request(self, *, message: Message) -> None:
         """Validate the message request"""
@@ -33,12 +44,10 @@ class AgentTarget(PromptTarget):
         # Extract the text from the Message object
         user_input = message.get_value()
 
-        # Route through NeMo Guardrails defense layer
-        # This calls your LangGraph agent internally via the action registered in nemo_defense
+        # Route through NeMo Guardrails defense layer, calls LangGraph agent internally via the action registered in nemo_defense
         answer = await run_guarded_agent(self.agent, user_input)
 
         # Create a response Message using from_prompt helper
-        # CORRECT parameters: prompt (not content), role
         response_message = Message.from_prompt(
             prompt=answer,
             role="assistant"
@@ -57,4 +66,4 @@ class AgentTarget(PromptTarget):
         """
         return False
 
-print("✓ AgentWrapper loaded successfully for PyRIT 0.11.0")
+print("AgentWrapper loaded successfully for PyRIT 0.11.0")

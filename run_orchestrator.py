@@ -29,31 +29,70 @@ async def run_audit(chatbot_app):
         "p7": scorer.p7_logic_scorer, "p8": scorer.p8_security_scorer,
     }
 
+    completed_personas = []
+    failed_personas = []
+    
     try:
-        for persona_id, data in persona_config.items():
-            print(f"\n--- ATTACKING PERSONA: {persona_id.upper()} ---")
+        total = len(persona_config)
+        for idx, (persona_id, data) in enumerate(persona_config.items(), 1):
+            print(f"\n{'='*60}")
+            print(f"PERSONA {idx}/{total}: {persona_id.upper()}")
+            print(f"Test: {data.get('test_type', 'Unknown')}")
+            print(f"Objective: {data['objective']}")
+            print('='*60 + "\n")
             
-            scoring_config = AttackScoringConfig(
-                objective_scorer=persona_to_scorer.get(persona_id)
-            )
+            try:
+                scoring_config = AttackScoringConfig(
+                    objective_scorer=persona_to_scorer.get(persona_id)
+                )
 
-            adversarial_config = AttackAdversarialConfig(
-                target=attacker_llm, 
-                system_prompt_path=RTASystemPromptPaths.TEXT_GENERATION.value 
-            )
+                adversarial_config = AttackAdversarialConfig(
+                    target=attacker_llm, 
+                    system_prompt_path=RTASystemPromptPaths.TEXT_GENERATION.value 
+                )
 
-            attack = RedTeamingAttack(
-                objective_target=target,
-                attack_adversarial_config=adversarial_config,
-                attack_scoring_config=scoring_config,
-                max_turns=3
-            )
+                attack = RedTeamingAttack(
+                    objective_target=target,
+                    attack_adversarial_config=adversarial_config,
+                    attack_scoring_config=scoring_config,
+                    max_turns=3
+                )
 
-            await attack.execute_async(objective=data["objective"])
-            print(f"--- {persona_id} AUDIT COMPLETE ---")
+                await attack.execute_async(objective=data["objective"])
+                
+                completed_personas.append(persona_id)
+                print(f"\n{persona_id.upper()} - COMPLETE")
+                
+            except Exception as e:
+                failed_personas.append((persona_id, str(e)))
+                print(f"\n{persona_id.upper()} - FAILED: {e}")
+                
+                # Check if it's a rate limit error
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    print("\nRate limit hit. Results so far are saved.")
+                    print("   Wait for quota reset and run again to continue.")
+                    break  # Stop testing on rate limit
+                else:
+                    print(f"   Continuing to next persona...")
+                    continue  # Try next persona
+
+        # Final summary
+        print("\n" + "="*60)
+        print("AUDIT SUMMARY")
+        print("="*60)
+        print(f"Completed: {len(completed_personas)}/{total}")
+        if completed_personas:
+            print(f"   {', '.join(completed_personas)}")
+        
+        if failed_personas:
+            print(f"\nFailed: {len(failed_personas)}/{total}")
+            for pid, error in failed_personas:
+                print(f"   {pid}: {error[:80]}...")
+        
+        print("="*60)
 
     finally:
-        # Graceful cleanup to stop the 'Task destroyed' warnings
+        # Graceful cleanup
         try:
             await attacker_llm.client.aio.aclose()
             await scorer.judge_llm.client.aio.aclose()
