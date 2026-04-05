@@ -5,20 +5,19 @@ from pyrit.executor.attack import (
     AttackAdversarialConfig,
     AttackScoringConfig,
     RedTeamingAttack,
-    RTASystemPromptPaths
+    RTASystemPromptPaths,
 )
 from pyrit.setup import initialize_pyrit_async, SQLITE
 from agent_wrapper import AgentTarget
 import scorer
 
 async def run_audit(chatbot_app):
-    # Initialize PyRIT with SQLite
     await initialize_pyrit_async(memory_db_type=SQLITE)
-    
-    # Initialize targets - using gemini-2.0-flash
-    attacker_llm = scorer.GeminiNativeTarget(model_name="gemini-2.0-flash")
+
+    # Provider-aware: uses Grok or Gemini based on LLM_PROVIDER env var
+    attacker_llm = scorer.get_llm_target()
     target = AgentTarget(agent=chatbot_app)
-    
+
     with open("customer_personas.yaml", "r", encoding="utf-8") as f:
         persona_config = yaml.safe_load(f)["personas"]
 
@@ -31,7 +30,7 @@ async def run_audit(chatbot_app):
 
     completed_personas = []
     failed_personas = []
-    
+
     try:
         total = len(persona_config)
         for idx, (persona_id, data) in enumerate(persona_config.items(), 1):
@@ -40,62 +39,58 @@ async def run_audit(chatbot_app):
             print(f"Test: {data.get('test_type', 'Unknown')}")
             print(f"Objective: {data['objective']}")
             print('='*60 + "\n")
-            
+
             try:
                 scoring_config = AttackScoringConfig(
                     objective_scorer=persona_to_scorer.get(persona_id)
                 )
-
                 adversarial_config = AttackAdversarialConfig(
-                    target=attacker_llm, 
-                    system_prompt_path=RTASystemPromptPaths.TEXT_GENERATION.value 
+                    target=attacker_llm,
+                    system_prompt_path=RTASystemPromptPaths.TEXT_GENERATION.value,
                 )
-
                 attack = RedTeamingAttack(
                     objective_target=target,
                     attack_adversarial_config=adversarial_config,
                     attack_scoring_config=scoring_config,
-                    max_turns=3
+                    max_turns=3,
                 )
-
                 await attack.execute_async(objective=data["objective"])
-                
                 completed_personas.append(persona_id)
                 print(f"\n{persona_id.upper()} - COMPLETE")
-                
+
             except Exception as e:
                 failed_personas.append((persona_id, str(e)))
                 print(f"\n{persona_id.upper()} - FAILED: {e}")
-                
-                # Check if it's a rate limit error
-                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e) or "rate_limit" in str(e).lower():
                     print("\nRate limit hit. Results so far are saved.")
-                    print("   Wait for quota reset and run again to continue.")
-                    break  # Stop testing on rate limit
+                    break
                 else:
-                    print(f"   Continuing to next persona...")
-                    continue  # Try next persona
+                    continue
 
-        # Final summary
         print("\n" + "="*60)
         print("AUDIT SUMMARY")
         print("="*60)
         print(f"Completed: {len(completed_personas)}/{total}")
         if completed_personas:
             print(f"   {', '.join(completed_personas)}")
-        
         if failed_personas:
             print(f"\nFailed: {len(failed_personas)}/{total}")
             for pid, error in failed_personas:
                 print(f"   {pid}: {error[:80]}...")
-        
         print("="*60)
 
     finally:
-        # Graceful cleanup
         try:
-            await attacker_llm.client.aio.aclose()
-            await scorer.judge_llm.client.aio.aclose()
+            if hasattr(attacker_llm, 'client'):
+                if hasattr(attacker_llm.client, 'aio'):
+                    await attacker_llm.client.aio.aclose()
+                else:
+                    await attacker_llm.client.close()
+            if hasattr(scorer.judge_llm, 'client'):
+                if hasattr(scorer.judge_llm.client, 'aio'):
+                    await scorer.judge_llm.client.aio.aclose()
+                else:
+                    await scorer.judge_llm.client.close()
         except:
             pass
 
